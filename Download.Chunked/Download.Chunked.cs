@@ -2,7 +2,6 @@
 using System.Linq;
 using System.Collections;
 using System.Collections.Generic;
-using Execute;
 using System.Reflection;
 using System.Net;
 using System.Net.Http;
@@ -59,11 +58,10 @@ namespace Download
         private static async Task<string> StartDownload(string Url, string filePath, bool silent = false)
         {
             ServicePointManager.DefaultConnectionLimit = 10;
-            RetObject ret = Execute.HttpRequest.Send(
-                Url,
-                HttpMethod.Head
-            );
-            length = long.Parse(ret.HttpResponseMessage.Content.Headers.ContentLength.ToString());
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(Url);
+            HttpWebResponse ret = (HttpWebResponse)request.GetResponse();
+            length = long.Parse(ret.GetResponseHeader("Content-Length"));
+            ret.Close();
             lengthMB = Math.Round(((Double)length / 1048576), 2);
             numberOfChunks = Convert.ToInt32(Math.Floor(Convert.ToDecimal((length / chunk)))) + 1;
             if (File.Exists(filePath))
@@ -108,8 +106,19 @@ namespace Download
             String[] bs = new string[ts.Length];
             return "done";
         }
-        public static void Start(string Url, string filePath, bool silent = false)
+        public void Start(string Url, string filePath, bool silent = false)
         {
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+            {
+                string resourceName = new AssemblyName(args.Name).Name + ".dll";
+                string resource = Array.Find(this.GetType().Assembly.GetManifestResourceNames(), element => element.EndsWith(resourceName));
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
+                {
+                    Byte[] assemblyData = new Byte[stream.Length];
+                    stream.Read(assemblyData, 0, assemblyData.Length);
+                    return Assembly.Load(assemblyData);
+                }
+            };
             Task task = StartDownload(Url, filePath, silent);
             task.Wait();
         }
