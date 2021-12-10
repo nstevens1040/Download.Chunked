@@ -120,10 +120,6 @@ namespace Download
                     be[0, 1] = length;
                 }
                 await GetChunk(be, Url, fs);
-                //await Task.Factory.StartNew(async () =>
-                //{
-                //    await GetChunk(be, Url, fs);
-                //});
                 if (!silent)
                 {
                     WriteProgress(be[0, 0], be[0, 1]);
