@@ -13,6 +13,20 @@ namespace Download
 {
     public class Chunked
     {
+        public Chunked()
+        {
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+            {
+                string resourceName = new AssemblyName(args.Name).Name + ".dll";
+                string resource = Array.Find(this.GetType().Assembly.GetManifestResourceNames(), element => element.EndsWith(resourceName));
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
+                {
+                    Byte[] assemblyData = new Byte[stream.Length];
+                    stream.Read(assemblyData, 0, assemblyData.Length);
+                    return Assembly.Load(assemblyData);
+                }
+            };
+        }
         private static void WriteProgress(long begin, long end)
         {
             completed = completed + (end - begin);
@@ -55,6 +69,29 @@ namespace Download
         private static string ts = String.Empty;
         private static Int32 chunk = 262144;
         private static Int32 numberOfChunks = 0;
+        private static async Task GetChunk(long[,] portion, string Url, FileStream fs)
+        {
+            await Task.Factory.StartNew(() =>
+            {
+                long begin = portion[0, 0];
+                long end = portion[0, 1];
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(Url);
+                req.ServicePoint.ConnectionLimit = 10;
+                req.AllowReadStreamBuffering = false;
+                req.AllowWriteStreamBuffering = false;
+                req.AddRange(begin, end);
+                using (HttpWebResponse res = (HttpWebResponse)req.GetResponse() as HttpWebResponse)
+                {
+                    using (Stream stream = res.GetResponseStream())
+                    {
+                        stream.CopyTo(fs);
+                        req.Abort();
+                        res.Close();
+                        res.Dispose();
+                    }
+                }
+            });
+        }
         private static async Task<string> StartDownload(string Url, string filePath, bool silent = false)
         {
             ServicePointManager.DefaultConnectionLimit = 10;
@@ -63,7 +100,7 @@ namespace Download
             length = long.Parse(ret.GetResponseHeader("Content-Length"));
             ret.Close();
             lengthMB = Math.Round(((Double)length / 1048576), 2);
-            numberOfChunks = Convert.ToInt32(Math.Floor(Convert.ToDecimal((length / chunk)))) + 1;
+            numberOfChunks = Convert.ToInt32(Math.Floor(Convert.ToDecimal((length / chunk))));
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
@@ -72,32 +109,24 @@ namespace Download
             FileStream fs = File.Open(filePath, FileMode.OpenOrCreate);
             for (Int32 i = 0; i < numberOfChunks; i++)
             {
-                List<Int32> be = new List<Int32>();
-                be.Add((i * chunk));
-                be.Add((i * chunk + chunk - 1));
-                await Task.Factory.StartNew((b) =>
+                long[,] be = new long[1, 2];
+                be[0, 0] = (i * chunk);
+                if((i * chunk + chunk - 1) <= length)
                 {
-                    long begin = ((List<Int32>)b)[0];
-                    long end = ((List<Int32>)b)[1];
-                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(Url);
-                    req.ServicePoint.ConnectionLimit = 10;
-                    req.AllowReadStreamBuffering = false;
-                    req.AllowWriteStreamBuffering = false;
-                    req.AddRange(begin, end);
-                    using (HttpWebResponse res = (HttpWebResponse)req.GetResponse() as HttpWebResponse)
-                    {
-                        using (Stream stream = res.GetResponseStream())
-                        {
-                            stream.CopyTo(fs);
-                            req.Abort();
-                            res.Close();
-                            res.Dispose();
-                        }
-                    }
-                }, be, TaskCreationOptions.LongRunning);
+                    be[0, 1] = (i * chunk + chunk - 1);
+                }
+                else
+                {
+                    be[0, 1] = length;
+                }
+                await GetChunk(be, Url, fs);
+                //await Task.Factory.StartNew(async () =>
+                //{
+                //    await GetChunk(be, Url, fs);
+                //});
                 if (!silent)
                 {
-                    WriteProgress(be[0], be[1]);
+                    WriteProgress(be[0, 0], be[0, 1]);
                 }
             }
             fs.Close();
@@ -106,21 +135,11 @@ namespace Download
             String[] bs = new string[ts.Length];
             return "done";
         }
-        public void Start(string Url, string filePath, bool silent = false)
+        public async Task Start(string Url, string filePath, bool silent = false)
         {
-            AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
-            {
-                string resourceName = new AssemblyName(args.Name).Name + ".dll";
-                string resource = Array.Find(this.GetType().Assembly.GetManifestResourceNames(), element => element.EndsWith(resourceName));
-                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
-                {
-                    Byte[] assemblyData = new Byte[stream.Length];
-                    stream.Read(assemblyData, 0, assemblyData.Length);
-                    return Assembly.Load(assemblyData);
-                }
-            };
-            Task task = StartDownload(Url, filePath, silent);
-            task.Wait();
+            top = Console.CursorTop;
+            left = Console.CursorLeft;
+            string task = await StartDownload(Url, filePath, silent);
         }
     }
 }
