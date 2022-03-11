@@ -1,16 +1,17 @@
-﻿using System;
-using System.Linq;
-using System.Collections;
-using System.Collections.Generic;
-using System.Reflection;
-using System.Net;
-using System.Net.Http;
-using System.IO;
-using System.Threading.Tasks;
-using System.Threading;
-using System.Text;
-namespace Download
+﻿namespace Download
 {
+    using System;
+    using System.Linq;
+    using System.Collections;
+    using System.Collections.Generic;
+    using System.Reflection;
+    using System.Net;
+    using System.Net.Http;
+    using System.IO;
+    using System.Threading.Tasks;
+    using System.Threading;
+    using System.Text;
+    using Execute;
     public class Chunked
     {
         public Chunked()
@@ -95,10 +96,8 @@ namespace Download
         private static async Task<string> StartDownload(string Url, string filePath, bool silent = false)
         {
             ServicePointManager.DefaultConnectionLimit = 10;
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(Url);
-            HttpWebResponse ret = (HttpWebResponse)request.GetResponse();
-            length = long.Parse(ret.GetResponseHeader("Content-Length"));
-            ret.Close();
+            RetObject ret = Execute.HttpRequest.Send(Url, HttpMethod.Head);
+            length = long.Parse(ret.HttpResponseMessage.Content.Headers.ContentLength.ToString());
             lengthMB = Math.Round(((Double)length / 1048576), 2);
             numberOfChunks = Convert.ToInt32(Math.Floor(Convert.ToDecimal((length / chunk))));
             if (File.Exists(filePath))
